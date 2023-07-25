@@ -1,0 +1,331 @@
+Please, generate Python script that collects the metrics from the number and overall size of unattached EBS disk volumes, not encrypted disk volumes, and not encrypted snapshots using AWS SDK
+ChatGPT
+Sure, I can generate a script to collect these metrics using the AWS SDK for Python also known as boto3. Below is a simple script that does this:
+
+python
+Copy code
+import boto3
+
+# initialize boto3 client
+ec2 = boto3.resource('ec2')
+
+# Collect metrics from unattached EBS disk volumes
+def unattached_volumes():
+    unattached_volumes = []
+    for volume in ec2.volumes.all():
+        # If volume is available, it means it is unattached
+        if volume.state == 'available':
+            unattached_volumes.append(volume)
+
+    total_size = sum([vol.size for vol in unattached_volumes])
+    return len(unattached_volumes), total_size
+
+# Collect metrics from non-encrypted EBS disk volumes
+def non_encrypted_volumes():
+    non_encrypted_volumes = []
+    for volume in ec2.volumes.all():
+        if not volume.encrypted:
+            non_encrypted_volumes.append(volume)
+
+    total_size = sum([vol.size for vol in non_encrypted_volumes])
+    return len(non_encrypted_volumes), total_size
+
+# Collect metrics from non-encrypted EBS snapshots
+def non_encrypted_snapshots():
+    non_encrypted_snapshots = []
+    for snapshot in ec2.snapshots.filter(OwnerIds=['self']):
+        if not snapshot.encrypted:
+            non_encrypted_snapshots.append(snapshot)
+
+    total_size = sum([snap.volume_size for snap in non_encrypted_snapshots])
+    return len(non_encrypted_snapshots), total_size
+
+def main():
+    print(f"Unattached Volumes: {unattached_volumes()}")
+    print(f"Non-Encrypted Volumes: {non_encrypted_volumes()}")
+    print(f"Non-Encrypted Snapshots: {non_encrypted_snapshots()}")
+
+if __name__ == "__main__":
+    main()
+You will need the correct AWS credentials to be set in your environment, you can set them using AWS CLI or via environment variables AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, and AWS_REGION.
+
+Also, remember to install the boto3 library if you haven't done so already. You can install it using pip:
+
+Copy code
+pip install boto3
+Please replace 'self' with the actual AWS account ID in the snapshots filter if you're not the owner of the snapshots.
+
+Please note, these scripts might take a while to run if you have a large number of volumes or snapshots. Also, you may incur costs for using AWS APIs to fetch this information.
+
+
+
+
+User
+Please, modify the script to save collected metrics as JSON files in the S3 bucket
+ChatGPT
+To save the metrics in JSON files in an S3 bucket, we need to modify the script a bit and add a new function to upload the file to S3. We can use the json library to create JSON from the metrics and the boto3 S3 client to upload the file.
+
+Here is the updated script:
+
+python
+Copy code
+import boto3
+import json
+import os
+import tempfile
+
+# initialize boto3 clients
+ec2 = boto3.resource('ec2')
+s3 = boto3.client('s3')
+
+# your bucket name
+bucket_name = '<your_bucket_name>'
+
+def save_to_s3(data, filename):
+    # Save data to a temporary file
+    with tempfile.NamedTemporaryFile(delete=False) as tmp:
+        tmp.write(json.dumps(data).encode())
+
+    # Upload the file to S3
+    with open(tmp.name, 'rb') as data:
+        s3.upload_fileobj(data, bucket_name, filename)
+    os.unlink(tmp.name)
+
+def unattached_volumes():
+    unattached_volumes = []
+    for volume in ec2.volumes.all():
+        if volume.state == 'available':
+            unattached_volumes.append(volume)
+
+    total_size = sum([vol.size for vol in unattached_volumes])
+    data = {'count': len(unattached_volumes), 'total_size': total_size}
+    save_to_s3(data, 'unattached_volumes.json')
+    return data
+
+def non_encrypted_volumes():
+    non_encrypted_volumes = []
+    for volume in ec2.volumes.all():
+        if not volume.encrypted:
+            non_encrypted_volumes.append(volume)
+
+    total_size = sum([vol.size for vol in non_encrypted_volumes])
+    data = {'count': len(non_encrypted_volumes), 'total_size': total_size}
+    save_to_s3(data, 'non_encrypted_volumes.json')
+    return data
+
+def non_encrypted_snapshots():
+    non_encrypted_snapshots = []
+    for snapshot in ec2.snapshots.filter(OwnerIds=['self']):
+        if not snapshot.encrypted:
+            non_encrypted_snapshots.append(snapshot)
+
+    total_size = sum([snap.volume_size for snap in non_encrypted_snapshots])
+    data = {'count': len(non_encrypted_snapshots), 'total_size': total_size}
+    save_to_s3(data, 'non_encrypted_snapshots.json')
+    return data
+
+def main():
+    print(f"Unattached Volumes: {unattached_volumes()}")
+    print(f"Non-Encrypted Volumes: {non_encrypted_volumes()}")
+    print(f"Non-Encrypted Snapshots: {non_encrypted_snapshots()}")
+
+if __name__ == "__main__":
+    main()
+This script now saves the metrics in JSON files and uploads them to your S3 bucket. You need to replace <your_bucket_name> with the name of your S3 bucket. Make sure the bucket is in the same region as specified by the AWS_REGION environment variable or the region you initialized the s3 client with.
+
+Remember that AWS S3 charges for storage, so storing large amounts of data may incur costs.
+
+Also, please ensure that your AWS credentials have sufficient permissions to write to the S3 bucket. If you encounter access issues, you may need to adjust the bucket's permissions or the IAM role's permissions.
+
+
+
+
+User
+Adjust the script to handle exceptions
+ChatGPT
+Sure, we can handle exceptions using try-except blocks to make sure our script doesn't stop in case of errors and instead handles them gracefully.
+
+Here is the updated script:
+
+python
+Copy code
+import boto3
+import json
+import os
+import tempfile
+
+# initialize boto3 clients
+ec2 = boto3.resource('ec2')
+s3 = boto3.client('s3')
+
+# your bucket name
+bucket_name = '<your_bucket_name>'
+
+def save_to_s3(data, filename):
+    try:
+        # Save data to a temporary file
+        with tempfile.NamedTemporaryFile(delete=False) as tmp:
+            tmp.write(json.dumps(data).encode())
+
+        # Upload the file to S3
+        with open(tmp.name, 'rb') as data:
+            s3.upload_fileobj(data, bucket_name, filename)
+        os.unlink(tmp.name)
+    except Exception as e:
+        print(f"Error occurred while uploading data to S3: {e}")
+
+def unattached_volumes():
+    unattached_volumes = []
+    try:
+        for volume in ec2.volumes.all():
+            if volume.state == 'available':
+                unattached_volumes.append(volume)
+    except Exception as e:
+        print(f"Error occurred while getting unattached volumes: {e}")
+        return
+
+    total_size = sum([vol.size for vol in unattached_volumes])
+    data = {'count': len(unattached_volumes), 'total_size': total_size}
+    save_to_s3(data, 'unattached_volumes.json')
+    return data
+
+def non_encrypted_volumes():
+    non_encrypted_volumes = []
+    try:
+        for volume in ec2.volumes.all():
+            if not volume.encrypted:
+                non_encrypted_volumes.append(volume)
+    except Exception as e:
+        print(f"Error occurred while getting non-encrypted volumes: {e}")
+        return
+
+    total_size = sum([vol.size for vol in non_encrypted_volumes])
+    data = {'count': len(non_encrypted_volumes), 'total_size': total_size}
+    save_to_s3(data, 'non_encrypted_volumes.json')
+    return data
+
+def non_encrypted_snapshots():
+    non_encrypted_snapshots = []
+    try:
+        for snapshot in ec2.snapshots.filter(OwnerIds=['self']):
+            if not snapshot.encrypted:
+                non_encrypted_snapshots.append(snapshot)
+    except Exception as e:
+        print(f"Error occurred while getting non-encrypted snapshots: {e}")
+        return
+
+    total_size = sum([snap.volume_size for snap in non_encrypted_snapshots])
+    data = {'count': len(non_encrypted_snapshots), 'total_size': total_size}
+    save_to_s3(data, 'non_encrypted_snapshots.json')
+    return data
+
+def main():
+    print(f"Unattached Volumes: {unattached_volumes()}")
+    print(f"Non-Encrypted Volumes: {non_encrypted_volumes()}")
+    print(f"Non-Encrypted Snapshots: {non_encrypted_snapshots()}")
+
+if __name__ == "__main__":
+    main()
+This script now handles exceptions in the various AWS API calls and will print an error message if anything goes wrong. It's important to handle exceptions so that your script can continue executing even if part of it fails.
+
+
+
+
+User
+Adjust the script to get bucket_name variable from environment variables
+ChatGPT
+You can use Python's built-in os module to fetch environment variables. Here is how you can modify your script to get the bucket_name variable from environment variables:
+
+python
+Copy code
+import boto3
+import json
+import os
+import tempfile
+
+# initialize boto3 clients
+ec2 = boto3.resource('ec2')
+s3 = boto3.client('s3')
+
+# get your bucket name from environment variables
+bucket_name = os.getenv('BUCKET_NAME')
+
+def save_to_s3(data, filename):
+    try:
+        if not bucket_name:
+            raise ValueError("No bucket name provided. Please set the BUCKET_NAME environment variable.")
+        
+        # Save data to a temporary file
+        with tempfile.NamedTemporaryFile(delete=False) as tmp:
+            tmp.write(json.dumps(data).encode())
+
+        # Upload the file to S3
+        with open(tmp.name, 'rb') as data:
+            s3.upload_fileobj(data, bucket_name, filename)
+        os.unlink(tmp.name)
+    except Exception as e:
+        print(f"Error occurred while uploading data to S3: {e}")
+
+# rest of the code is the same...
+The os.getenv('BUCKET_NAME') call will get the value of the environment variable BUCKET_NAME. If the variable is not set, os.getenv will return None. If this happens, we raise a ValueError in the save_to_s3 function.
+
+
+
+
+User
+Adjust the script to be able to execute in AWS Lambda function
+ChatGPT
+To execute the script in an AWS Lambda function, you need to make some modifications. AWS Lambda requires a handler function that receives event and context arguments and runs the main part of your code.
+
+Here is the updated script:
+
+python
+Copy code
+import boto3
+import json
+import os
+import tempfile
+
+# initialize boto3 clients
+ec2 = boto3.resource('ec2')
+s3 = boto3.client('s3')
+
+# get your bucket name from environment variables
+bucket_name = os.getenv('BUCKET_NAME')
+
+def save_to_s3(data, filename):
+    try:
+        if not bucket_name:
+            raise ValueError("No bucket name provided. Please set the BUCKET_NAME environment variable.")
+        
+        # Save data to a temporary file
+        with tempfile.NamedTemporaryFile(delete=False) as tmp:
+            tmp.write(json.dumps(data).encode())
+
+        # Upload the file to S3
+        with open(tmp.name, 'rb') as data:
+            s3.upload_fileobj(data, bucket_name, filename)
+        os.unlink(tmp.name)
+    except Exception as e:
+        print(f"Error occurred while uploading data to S3: {e}")
+
+def unattached_volumes():
+    # rest of the code is the same...
+
+def non_encrypted_volumes():
+    # rest of the code is the same...
+
+def non_encrypted_snapshots():
+    # rest of the code is the same...
+
+def lambda_handler(event, context):
+    print(f"Unattached Volumes: {unattached_volumes()}")
+    print(f"Non-Encrypted Volumes: {non_encrypted_volumes()}")
+    print(f"Non-Encrypted Snapshots: {non_encrypted_snapshots()}")
+The lambda_handler function is the entry point for the AWS Lambda service. The event parameter is a dictionary containing details about the triggering event, and the context parameter contains runtime information.
+
+Now, you can set this script in an AWS Lambda function with lambda_handler as the handler. Remember that the Lambda function needs to have sufficient permissions to read EBS volumes and snapshots, and to write to the specified S3 bucket.
+
+AWS Lambda function has a limit for execution time, by default, it's 3 seconds and can be increased up to 15 minutes. Make sure to adjust it based on the volume of your data.
+
+To deploy this code to AWS Lambda, you can create a deployment package (a .zip file) that includes your code and any dependencies. Then you can upload the .zip file to your Lambda function.
